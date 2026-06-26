@@ -40,6 +40,9 @@ typedef int32_t rmw_ret_t;
 /// Incorrect rmw implementation.
 #define RMW_RET_INCORRECT_RMW_IMPLEMENTATION 12
 
+/// Constraints were hit during operation
+#define RMW_RET_CONSTRAINTS_HIT 20
+
 // rmw node specific ret codes in 2XX
 /// Failed to find node name
 // Using same return code than in rcl

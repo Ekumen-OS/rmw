@@ -349,6 +349,45 @@ rmw_create_publisher(
   const rmw_qos_profile_t * qos_profile,
   const rmw_publisher_options_t * publisher_options);
 
+/// Create a publisher with message type constraints.
+/**
+ * Same as rmw_create_publisher(), but with additional constraints on the
+ * message type that the middleware may use to optimize allocation and transport,
+ * including message loaning support.
+ *
+ * If no constraints are given, this function is equivalent to rmw_create_publisher().
+ *
+ * <hr>
+ * Attribute          | Adherence
+ * ------------------ | -------------
+ * Allocates Memory   | Yes
+ * Thread-Safe        | No
+ * Uses Atomics       | Maybe [1]
+ * Lock-Free          | Maybe [1]
+ * <i>[1] rmw implementation defined, check the implementation documentation</i>
+ *
+ * \pre Given `type_constraints`, if provided, must be valid `rosidl` message type constraints,
+ *   with type specific constraints, if any, matching the given ROS message type.
+ *
+ * \param[in] node Handle to node with which to register this publisher.
+ * \param[in] type_support Type support for the message type.
+ * \param[in] type_constraints Optional message type constraints (may be `NULL`).
+ * \param[in] topic_name Name of the topic to publish on.
+ * \param[in] qos_profile QoS settings for this publisher.
+ * \param[in] publisher_options Optional publisher configuration.
+ * \return rmw publisher handle, or `NULL` if there was an error.
+ */
+RMW_PUBLIC
+RMW_WARN_UNUSED
+rmw_publisher_t *
+rmw_create_publisher_with_constraints(
+  const rmw_node_t * node,
+  const rosidl_message_type_support_t * type_support,
+  const rosidl_message_type_constraints_t * type_constraints,
+  const char * topic_name,
+  const rmw_qos_profile_t * qos_profile,
+  const rmw_publisher_options_t * publisher_options);
+
 /// Finalize a given publisher handle, reclaim the resources, and deallocate the publisher handle.
 /**
  * This function will return early if a logical error, such as `RMW_RET_INVALID_ARGUMENT`
@@ -438,6 +477,56 @@ rmw_borrow_loaned_message(
   const rosidl_message_type_support_t * type_support,
   void ** ros_message);
 
+/// Borrow a loaned ROS message with optional constraints.
+/**
+ * Same as rmw_borrow_loaned_message(), but with additional constraints on the message type
+ * to bound message size and enable borrowing. These constraints add to any publisher-wide
+ * constraints set on publisher creation. Per loan constraints may not be looser than
+ * publisher-wide constraints.
+ *
+ * If no constraints are given, this function is equivalent to rmw_borrow_loaned_message().
+ *
+ * <hr>
+ * Attribute          | Adherence
+ * ------------------ | -------------
+ * Allocates Memory   | Maybe
+ * Thread-Safe        | Yes
+ * Uses Atomics       | Maybe [1]
+ * Lock-Free          | Maybe [1]
+ *
+ * <i>[1] implementation defined, check implementation documentation.</i>
+ *
+ * \pre Given `publisher` must be a valid publisher, as returned by rmw_create_publisher().
+ * \pre Given `type_support` must be a valid `rosidl` message type support, matching the
+ *   one registered with the `publisher` on creation.
+ * \pre Given `type_constraints`, if provided, must be valid `rosidl` message type constraints,
+ *   with type specific constraints, if any, matching the given ROS message type.
+ *
+ * \param[in] publisher Publisher to which the loaned ROS message will be associated.
+ * \param[in] type_support Message type support of the loaned ROS message.
+ * \param[in] type_constraints Optional message type constraints (may be `NULL`).
+ * \param[out] ros_message Pointer to type erased ROS message loaned by the middleware.
+ * \return `RMW_RET_OK` if successful, or
+ * \return `RMW_RET_BAD_ALLOC` if memory allocation fails, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `publisher` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `type_support` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `ros_message` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `*ros_message` is not NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `type_constraints` are looser than publisher-wide constraints, or
+ * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if `publisher` implementation identifier
+ *   does not match this implementation, or
+ * \return `RMW_RET_UNSUPPORTED` if the implementation does not support ROS message loaning, or
+ * \return `RMW_RET_ERROR` if an unexpected error occurred.
+ */
+RMW_PUBLIC
+RMW_WARN_UNUSED
+rmw_ret_t
+rmw_borrow_loaned_message_with_constraints(
+  const rmw_publisher_t * publisher,
+  const rosidl_message_type_support_t * type_support,
+  const rosidl_message_type_constraints_t * type_constraints,
+  void ** ros_message);
+
 /// Return a loaned message previously borrowed from a publisher.
 /**
  * Tells the middleware that a borrowed ROS message is no longer needed by the caller.
@@ -479,7 +568,7 @@ rmw_borrow_loaned_message(
  * \param[in] publisher Publisher to which the loaned ROS message is associated.
  * \param[in] loaned_message Type erased loaned ROS message to be returned.
  * \return `RMW_RET_OK` if successful, or
- * \return `RMW_RET_INVALID_ARGUMENT` if `publisher` is NULL, or
+ * \return `RMW_REon the message type, or NULLT_INVALID_ARGUMENT` if `publisher` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `loaned_message` is NULL, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if `publisher` implementation identifier
  *   does not match this implementation, or
@@ -547,6 +636,7 @@ rmw_return_loaned_message_from_publisher(
  * \return `RMW_RET_OK` if successful, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `publisher` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `ros_message` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `ros_message` would have exceeded publisher constraints if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if `publisher` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1018,6 +1108,45 @@ rmw_create_subscription(
   const rmw_qos_profile_t * qos_policies,
   const rmw_subscription_options_t * subscription_options);
 
+/// Create a subscription with message type constraints.
+/**
+ * Same as rmw_create_subscription(), but with additional constraints on the
+ * message type that the middleware may use to optimize allocation and transport,
+ * including message loaning support.
+ *
+ * If no constraints are given, the behavior is equivalent to rmw_create_subscription().
+ *
+ * <hr>
+ * Attribute          | Adherence
+ * ------------------ | -------------
+ * Allocates Memory   | Yes
+ * Thread-Safe        | No
+ * Uses Atomics       | Maybe [1]
+ * Lock-Free          | Maybe [1]
+ * <i>[1] rmw implementation defined, check the implementation documentation</i>
+ *
+ * \pre Given `type_constraints`, if provided, must be valid `rosidl` message type constraints,
+ *   with type specific constraints, if any, matching the given ROS message type.
+ *
+ * \param[in] node Handle to node with which to register this subscription.
+ * \param[in] type_support Type support for the message type.
+ * \param[in] type_constraints Optional constraints on the message type (may be `NULL`).
+ * \param[in] topic_name Name of the topic to subscribe to.
+ * \param[in] qos_policies QoS settings for this subscription.
+ * \param[in] subscription_options Optional subscription configuration.
+ * \return rmw subscription handle, or `NULL` if there was an error.
+ */
+RMW_PUBLIC
+RMW_WARN_UNUSED
+rmw_subscription_t *
+rmw_create_subscription_with_constraints(
+  const rmw_node_t * node,
+  const rosidl_message_type_support_t * type_support,
+  const rosidl_message_type_constraints_t * type_constraints,
+  const char * topic_name,
+  const rmw_qos_profile_t * qos_policies,
+  const rmw_subscription_options_t * subscription_options);
+
 /// Finalize a given subscription handle, reclaim the resources, and deallocate the subscription
 /// handle.
 /**
@@ -1254,6 +1383,8 @@ rmw_subscription_get_content_filter(
  * \return `RMW_RET_INVALID_ARGUMENT` if `subscription` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `ros_message` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `ros_message` would have exceeded
+ *   subscription-wide constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription`
  *   implementation identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1340,6 +1471,8 @@ rmw_take(
  * \return `RMW_RET_INVALID_ARGUMENT` if `ros_message` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `message_info` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `ros_message` would have exceeded
+ *   subscription-wide constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription`
  *   implementation identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1453,6 +1586,8 @@ rmw_take_with_info(
  * \return `RMW_RET_INVALID_ARGUMENT` if `count` is 0, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `message_sequence` capacity is less than `count`, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `message_info_sequence` capacity is less than `count`, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if any message in `message_sequence` would have exceeded
+ *   subscription-wide constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1550,6 +1685,8 @@ rmw_take_sequence(
  * \return `RMW_RET_INVALID_ARGUMENT` if `subscription` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `serialized_message` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `serialized_message` would have exceeded
+ *   subscription-wide constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1644,6 +1781,8 @@ rmw_take_serialized_message(
  * \return `RMW_RET_INVALID_ARGUMENT` if `serialized_message` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `message_info` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `serialized_message` would have exceeded
+ *   subscription-wide constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_ERROR` if an unexpected error occurs.
@@ -1730,6 +1869,8 @@ rmw_take_serialized_message_with_info(
  * \return `RMW_RET_INVALID_ARGUMENT` if `loaned_message` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `*loaned_message` is not NULL (to prevent leaks), or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `loaned_message` would have exceeded subscription-wide
+ *   constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_UNSUPPORTED` if the implementation does not support loaned ROS messages, or
@@ -1820,6 +1961,8 @@ rmw_take_loaned_message(
  * \return `RMW_RET_INVALID_ARGUMENT` if `*loaned_message` is not NULL to prevent leaks, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
  * \return `RMW_RET_INVALID_ARGUMENT` if `message_info` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `loaned_message` would have exceeded subscription-wide
+ *   constraints, if any, or
  * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
  *   identifier does not match this implementation, or
  * \return `RMW_RET_UNSUPPORTED` if the implementation does not support loaned ROS messages, or
@@ -1830,6 +1973,109 @@ RMW_WARN_UNUSED
 rmw_ret_t
 rmw_take_loaned_message_with_info(
   const rmw_subscription_t * subscription,
+  void ** loaned_message,
+  bool * taken,
+  rmw_message_info_t * message_info,
+  rmw_subscription_allocation_t * allocation);
+
+/// Take a loaned ROS message with optional constraints.
+/**
+ * Same as rmw_take_loaned_message(), but with additional constraints on the message type
+ * to bound message size and enable loaning. These constraints add to any subscription-wide
+ * constraints set on subscription creation. Per loan constraints that are looser than
+ * subscription-wide constraints will be effectively ignored.
+ *
+ * If no constraints are given, this function is equivalent to rmw_borrow_loaned_message().
+ *
+ * <hr>
+ * Attribute          | Adherence
+ * ------------------ | -------------
+ * Allocates Memory   | Maybe
+ * Thread-Safe        | Yes
+ * Uses Atomics       | Maybe [1]
+ * Lock-Free          | Maybe [1]
+ *
+ * <i>[1] implementation defined, check implementation documentation.</i>
+ *
+ * \pre Given `type_constraints`, if provided, must be valid `rosidl` message type constraints,
+ *   with type specific constraints, if any, matching the given ROS message type.
+ *
+ * \param[in] subscription Subscription to take ROS message from.
+ * \param[in] type_constraints Optional message type constraints (may be `NULL`).
+ * \param[inout] loaned_message Pointer to type erased ROS message taken
+ *   and loaned by the middleware.
+ * \param[out] taken Boolean flag indicating if a ROS message was taken or not.
+ * \param[in] allocation Pre-allocated memory to use. May be NULL.
+ * \return `RMW_RET_OK` if successful, or
+ * \return `RMW_RET_BAD_ALLOC` if memory allocation fails, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `subscription` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `loaned_message` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `*loaned_message` is not NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `loaned_message` would have exceeded constraints, or
+ * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
+ *   identifier does not match this implementation, or
+ * \return `RMW_RET_UNSUPPORTED` if the implementation does not support loaned ROS messages, or
+ * \return `RMW_RET_ERROR` if an unexpected error occurs.
+ */
+RMW_PUBLIC
+RMW_WARN_UNUSED
+rmw_ret_t
+rmw_take_loaned_message_with_constraints(
+  const rmw_subscription_t * subscription,
+  const rosidl_message_type_constraints_t * type_constraints,
+  void ** loaned_message,
+  bool * taken,
+  rmw_subscription_allocation_t * allocation);
+
+/// Take a loaned ROS message with optional constraints and message info.
+/**
+ * Same as rmw_take_loaned_message_with_info(), but with additional constraints on the message type
+ * to bound message size and enable loaning. These constraints add to any subscription-wide
+ * constraints set on subscription creation. Per loan constraints that are looser than
+ * subscription-wide constraints will be effectively ignored.
+ *
+ * If no constraints are given, this function is equivalent to rmw_borrow_loaned_message().
+ *
+ * <hr>
+ * Attribute          | Adherence
+ * ------------------ | -------------
+ * Allocates Memory   | Maybe
+ * Thread-Safe        | Yes
+ * Uses Atomics       | Maybe [1]
+ * Lock-Free          | Maybe [1]
+ *
+ * <i>[1] implementation defined, check implementation documentation.</i>
+ *
+ * \pre Given `type_constraints`, if provided, must be valid `rosidl` message type constraints,
+ *   with type specific constraints, if any, matching the given ROS message type.
+ *
+ * \param[in] subscription Subscription to take ROS message from.
+ * \param[in] type_constraints Optional message type constraints (may be `NULL`).
+ * \param[inout] loaned_message Pointer to type erased ROS message taken
+ *   and loaned by the middleware.
+ * \param[out] taken Boolean flag indicating if a ROS message was taken or not.
+ * \param[out] message_info Taken ROS message metadata.
+ * \param[in] allocation Pre-allocated memory to use. May be NULL.
+ * \return `RMW_RET_OK` if successful, or
+ * \return `RMW_RET_BAD_ALLOC` if memory allocation fails, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `subscription` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `loaned_message` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `*loaned_message` is not NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `taken` is NULL, or
+ * \return `RMW_RET_INVALID_ARGUMENT` if `message_info` is NULL, or
+ * \return `RMW_RET_CONSTRAINTS_HIT` if `loaned_message` would have exceeded constraints, or
+ * \return `RMW_RET_INCORRECT_RMW_IMPLEMENTATION` if the `subscription` implementation
+ *   identifier does not match this implementation, or
+ * \return `RMW_RET_UNSUPPORTED` if the implementation does not support loaned ROS messages, or
+ * \return `RMW_RET_ERROR` if an unexpected error occurs.
+ */
+RMW_PUBLIC
+RMW_WARN_UNUSED
+rmw_ret_t
+rmw_take_loaned_message_with_info_and_constraints(
+  const rmw_subscription_t * subscription,
+  const rosidl_message_type_constraints_t * type_constraints,
   void ** loaned_message,
   bool * taken,
   rmw_message_info_t * message_info,
